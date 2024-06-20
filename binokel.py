@@ -8,9 +8,9 @@ DEBUG = True
 
 class Suit(str, Enum):
     HEARTS = "hearts"
-    DIAMONDS = "diamonds"
-    CLUBS = "clubs"
+    KROSS = "kross"
     SPADES = "spades"
+    BALLS = "balls"
 
 
 class GameState(str, Enum):
@@ -38,6 +38,47 @@ class Card(BaseModel):
         super().__init__(value=value, suit=suit)
 
 
+class Sets:
+    def rundgang() -> List[Card]:
+        return [
+            Card(value=value, suit=suit)
+            for suit in Suit
+            for value in [Value.QUEEN, Value.KING]
+        ]
+
+    def family(suit: Suit) -> List[Card]:
+        return [Card(value=value, suit=suit) for value in Value]
+
+    def pair(suit: Suit) -> List[Card]:
+        return [Card(value=value, suit=suit) for value in [Value.QUEEN, Value.KING]]
+
+    def jacks() -> List[Card]:
+        return [Card(value=Value.JACK, suit=suit) for suit in Suit]
+
+    def queens() -> List[Card]:
+        return [Card(value=Value.QUEEN, suit=suit) for suit in Suit]
+
+    def kings() -> List[Card]:
+        return [Card(value=Value.KING, suit=suit) for suit in Suit]
+
+    def aces() -> List[Card]:
+        return [Card(value=Value.ACE, suit=suit) for suit in Suit]
+
+    def doubleBinokel() -> List[Card]:
+        return [
+            Card(value=Value.QUEEN, suit=Suit.SPADES),
+            Card(value=Value.QUEEN, suit=Suit.SPADES),
+            Card(value=Value.JACK, suit=Suit.BALLS),
+            Card(value=Value.JACK, suit=Suit.BALLS),
+        ]
+
+    def binokel() -> List[Card]:
+        return [
+            Card(value=Value.QUEEN, suit=Suit.SPADES),
+            Card(value=Value.JACK, suit=Suit.BALLS),
+        ]
+
+
 class Deck(BaseModel):
     cards: List[Card]
 
@@ -63,6 +104,87 @@ class Player(BaseModel):
     won: List[Card] = []
     declared: List[Card] = []
     bid: int = 0
+    currentPoints: int = 0
+
+
+def copyCards(cards: List[Card]) -> List[Card]:
+    return [Card(value=c.value, suit=c.suit) for c in cards]
+
+
+def countDeclaredPoints(cards: List[Card], trump: Suit) -> int:
+    points = 0
+
+    cc = copyCards(cards)
+
+    # check for rundgang
+    if all([c in cc for c in Sets.rundgang()]):
+        points += 800
+
+    cc = copyCards(cards)
+
+    for _ in range(2):
+        for suit in Suit:
+            # check for family
+            if all([c in cc for c in Sets.family(suit)]):
+                for c in Sets.family(suit):
+                    cc.remove(c)
+                if suit == trump:
+                    points += 150
+                else:
+                    points += 100
+
+            # check for pair
+            if all([c in cc for c in Sets.pair(suit)]):
+                for c in Sets.pair(suit):
+                    cc.remove(c)
+                if suit == trump:
+                    points += 40
+                else:
+                    points += 20
+
+    cc = copyCards(cards)
+
+    for _ in range(2):
+        for suit in Suit:
+            # check for jacks
+            if all([c in cc for c in Sets.jacks()]):
+                for c in Sets.jacks():
+                    cc.remove(c)
+                points += 40
+
+            # check for queens
+            if all([c in cc for c in Sets.queens()]):
+                for c in Sets.queens():
+                    cc.remove(c)
+                points += 60
+
+            # check for kings
+            if all([c in cc for c in Sets.kings()]):
+                for c in Sets.kings():
+                    cc.remove(c)
+                points += 80
+
+            # check for aces
+            if all([c in cc for c in Sets.aces()]):
+                for c in Sets.aces():
+                    cc.remove(c)
+                points += 100
+
+    cc = copyCards(cards)
+
+    # check for double binokel
+    if all([c in cc for c in Sets.doubleBinokel()]):
+        for c in Sets.doubleBinokel():
+            cc.remove(c)
+        points += 350
+
+    # check for binokel
+    if all([c in cc for c in Sets.binokel()]):
+        for c in Sets.binokel():
+            cc.remove(c)
+        points += 40
+
+    return points
 
 
 class BinokelGame(BaseModel):
@@ -235,6 +357,9 @@ class BinokelGame(BaseModel):
         if self.currentPlayer == (self.getBidder() + 3) % 4:
             self.gameState = GameState.PLAYING
 
+        points = countDeclaredPoints(self.players[self.currentPlayer].declared)
+        self.players[self.currentPlayer].currentPoints = points
+
         print(self)
 
     def play(self, cardIndex: int):
@@ -249,11 +374,11 @@ class BinokelGame(BaseModel):
                 f"Player {self.currentPlayer} plays {self.players[self.currentPlayer].hand[cardIndex]}"
             )
 
-        allowedMove = self.isAllowedToPlayCard(
-            self.onTable,
-            self.players[self.currentPlayer].hand,
-            self.players[self.currentPlayer].hand[cardIndex],
-        )
+        t = self.onTable
+        h = self.players[self.currentPlayer].hand
+        c = self.players[self.currentPlayer].hand[cardIndex]
+
+        allowedMove = self.isAllowedToPlayCard(t, h, c)
 
         if allowedMove:
             self.onTable.append(self.players[self.currentPlayer].hand.pop(cardIndex))
@@ -335,7 +460,7 @@ game.press(0)
 game.press(0)
 game.press(0)
 
-game.setTrump(Suit.DIAMONDS)
+game.setTrump(Suit.KROSS)
 
 game.declare(0)
 game.declare(-1)
