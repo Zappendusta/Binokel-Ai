@@ -20,6 +20,7 @@ class GameState(str, Enum):
     DECLARING = "declaring"
     PLAYING = "playing"
     EVALUATING = "evaluating"
+    DONE = "done"
 
 
 class Value(IntEnum):
@@ -468,6 +469,8 @@ class BinokelGame(BaseModel):
         for i in range(4):
             self.players[i].currentPoints += countWonPoints(self.players[i].won)
 
+        self.gameState = GameState.DONE
+
         print(self)
 
 
@@ -508,3 +511,5 @@ while game.gameState == GameState.PLAYING:
         game.play(random.randint(0, len(game.players[game.currentPlayer].hand) - 1))
     except ValueError:
         pass
+
+game.evaluate()
