@@ -111,6 +111,10 @@ def copyCards(cards: List[Card]) -> List[Card]:
     return [Card(value=c.value, suit=c.suit) for c in cards]
 
 
+def countWonPoints(cards: List[Card]) -> int:
+    return sum([c.value for c in cards])
+
+
 def countDeclaredPoints(cards: List[Card], trump: Suit) -> int:
     points = 0
 
@@ -223,9 +227,12 @@ class BinokelGame(BaseModel):
         self.deck.shuffle()
         self.gameState = GameState.BIDDING
 
+        cardsPerPlayer = (len(self.deck.cards) - 4) // 4
+
         for i in range(4):
             self.players.append(Player(number=i))
-            for _ in range(9):
+
+            for _ in range(cardsPerPlayer):
                 self.players[i].hand.append(self.deck.deal())
                 self.players[i].hand.sort(key=lambda x: (x.suit, x.value))
                 self.players[i].bid = 0
@@ -310,8 +317,8 @@ class BinokelGame(BaseModel):
             self.players[self.currentPlayer].hand.pop(cardIndex)
         )
 
-        # wenn der aktuelle spieler wieder 9 karten hat, kommt die nächste phase
-        if len(self.players[self.currentPlayer].hand) == 9:
+        # wenn der aktuelle spieler 4 karten gedrückt hat, ist der nächste spieler dran
+        if len(self.players[self.currentPlayer].won) == 4:
             self.gameState = GameState.TRUMPING
 
         print(self)
@@ -347,17 +354,28 @@ class BinokelGame(BaseModel):
                 f"Player {self.currentPlayer} declares {self.players[self.currentPlayer].hand[cardIndex]}"
             )
 
+        # self.players[self.currentPlayer].declared.append(
+        #     Card(
+        #         value=self.players[self.currentPlayer].hand[cardIndex].value,
+        #         suit=self.players[self.currentPlayer].hand[cardIndex].suit,
+        #     )
+        # )
+
         self.players[self.currentPlayer].declared.append(
-            Card(
-                value=self.players[self.currentPlayer].hand[cardIndex].value,
-                suit=self.players[self.currentPlayer].hand[cardIndex].suit,
-            )
+            self.players[self.currentPlayer].hand.pop(cardIndex)
         )
 
         if self.currentPlayer == (self.getBidder() + 3) % 4:
             self.gameState = GameState.PLAYING
 
-        points = countDeclaredPoints(self.players[self.currentPlayer].declared)
+            # copy the declared cards back to the hand for all players
+            for i in range(4):
+                for c in self.players[i].declared:
+                    self.players[i].hand.append(Card(value=c.value, suit=c.suit))
+
+        points = countDeclaredPoints(
+            self.players[self.currentPlayer].declared, self.trump
+        )
         self.players[self.currentPlayer].currentPoints = points
 
         print(self)
@@ -388,7 +406,14 @@ class BinokelGame(BaseModel):
         if len(self.onTable) < 4:
             self.currentPlayer = (self.currentPlayer + 1) % 4
         else:
-            pass
+            highestCardIndex = self.highestCardIndex(self.onTable)
+            self.currentPlayer = (self.currentPlayer + highestCardIndex) % 4
+
+            for _ in range(4):
+                self.players[self.currentPlayer].won.append(self.onTable.pop(0))
+
+            if len(self.players[self.currentPlayer].hand) == 0:
+                self.gameState = GameState.EVALUATING
 
         print(self)
 
@@ -436,6 +461,15 @@ class BinokelGame(BaseModel):
 
         return True
 
+    def evaluate(self):
+        if self.gameState != GameState.EVALUATING:
+            return
+
+        for i in range(4):
+            self.players[i].currentPoints += countWonPoints(self.players[i].won)
+
+        print(self)
+
 
 game = BinokelGame()
 
@@ -462,20 +496,15 @@ game.press(0)
 
 game.setTrump(Suit.KROSS)
 
-game.declare(0)
-game.declare(-1)
+while game.gameState == GameState.DECLARING:
+    for _ in range(9):
+        try:
+            game.declare(0)
+        except ValueError:
+            pass
 
-game.declare(0)
-game.declare(-1)
-
-game.declare(0)
-game.declare(-1)
-
-game.declare(0)
-game.declare(-1)
-
-
-game.play(0)
-game.play(0)
-game.play(0)
-game.play(0)
+while game.gameState == GameState.PLAYING:
+    try:
+        game.play(random.randint(0, len(game.players[game.currentPlayer].hand) - 1))
+    except ValueError:
+        pass
